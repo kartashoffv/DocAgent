@@ -13,6 +13,7 @@ router = APIRouter(tags=["Chats"], prefix="/chats")
 class ChatCreateRequest(BaseModel):
     message_from_human: str
     message_from_ai_agent: str
+    message_intent: str
     chat_id_uuid: Optional[str] = None
 
 class ChatResponse(BaseModel):
@@ -20,6 +21,7 @@ class ChatResponse(BaseModel):
     chat_id_uuid: Optional[uuid.UUID]
     message_from_human: str
     message_from_ai_agent: str
+    message_intent: str
     created_at: datetime
     
     class Config:
@@ -36,7 +38,8 @@ async def create_chat(
     new_chat_instance = Chat(
         chat_id_uuid=chat_request.chat_id_uuid,
         message_from_human=chat_request.message_from_human,
-        message_from_ai_agent=chat_request.message_from_ai_agent
+        message_from_ai_agent=chat_request.message_from_ai_agent,
+        message_intent=chat_request.message_intent
     )
     db_session.add(new_chat_instance)
     db_session.commit()
@@ -80,4 +83,4 @@ async def delete_chat_by_uuid(
         db_session.delete(message)
     
     db_session.commit()
-    return {"message": f"Chat {chat_uuid} deleted successfully"} 
+    return {"message": f"Chat {chat_uuid} deleted successfully"}
