@@ -22,22 +22,23 @@ logger = logging.getLogger(__name__)
 class ContextAwareAgent:
     def __init__(self):
         self.document = PowerOfAttorneyData()
-        self.conversation_history = []
+        # self.conversation_history = []
         self.client = AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 
     
     async def analyze_user_intent(self, user_input: str, conversation_history: list[str]):
         """Функция для анализа интента"""
         
+        
         try:
-            result = await llm_invoke_structured_output(INTENT_IDENTIFICATION_PROMPT, user_input, UserIntent)
-            logger.info("ACTION", result.action)
+            prompt = INTENT_IDENTIFICATION_PROMPT.format(user_input=user_input, conversation_history=conversation_history)
+            result = await llm_invoke_structured_output(prompt, user_input, UserIntent)
             if result.action == "offtop":
-                result = await llm_invoke_structured_output(OFFTOP_PROMPT, user_input, AgentAnswer)
-                return result.answer
+                prompt = OFFTOP_PROMPT.format(conversation_history=conversation_history)
+                result = await llm_invoke_structured_output(prompt, user_input, AgentAnswer)
+                return result.answer, "offtop"
             else:
-                logger.info("THIS IS MESSAGE FOR FILL_ATTORNEY_POWER")
-                return await self.extract_data_for_attorney_power(user_input)
+                return await self.extract_data_for_attorney_power(user_input, conversation_history)
             
         except Exception as e:
             logger.error(f"Error in intent analysis: {e}")
@@ -47,48 +48,43 @@ class ContextAwareAgent:
                 actions=[]
             )
     
-    async def extract_data_for_attorney_power(self, user_input: str) -> Dict[str, Any]:
+    async def extract_data_for_attorney_power(self, user_input: str, conversation_history: list[str]) -> Dict[str, Any]:
         """функция для работы с данными для доверенности"""
-
         prompt = DATA_EXTRACTION_PROMPT_FILL_ATTORNEY_POWER.format(
             missing_fields=self.document.get_missing_fields(),
             filled_fields=self.document.get_filled_fields(),
-            user_input=user_input)
+            conversation_history=conversation_history
+            )
 
         # пытаемся извлечь сущности из сообщения пользователя и заполнить форму
         try:
             result = await llm_invoke_structured_output(prompt, user_input, PowerOfAttorneyAction)
-            
             if result.action_type == "skip":
-                logger.info("result.action_type", result.action_type)
                 # не обновляем поля, а просто возвращаемся к пользователю с ответом
                 prompt = SKIP_LOGICAL_PROMPT.format(
                     filled_fields=self.document.get_filled_fields(),
                     missing_fields=self.document.get_missing_fields(),
+                    conversation_history=conversation_history
                 )
                 
                 result = await llm_invoke_structured_output(prompt, user_input, AgentAnswer)
-                # self.conversation_history.append({"role": "user", "content": user_input})
-                # self.conversation_history.append({"role": "assistant", "content": answer_result.answer})
-                return result.answer
+                return result.answer, "fill_attorney_power"
             
             elif result.action_type == "update_field":
-                logger.info("ДО ОБНОВЛЕНИЯ, текущий процент заполнения: ", self.document.get_completion_percentage())
-                logger.info("result.action_data", result.action_data)
                 self._update_document(result.action_data)
-                logger.info("ДАННЫЕ ОБНОВЛЕНЫ, текущий процент заполнения: ", self.document.get_completion_percentage())
                 if self.document.get_completion_percentage()==100:
                     result = await llm_invoke_structured_output(SUCCESS_PROMPT_FILL_ATTORNEY_POWER, user_input, AgentAnswer)
                     document_markdown = self.generate_final_document()
-                    return result.answer + "\n" + document_markdown
+                    return result.answer + "\n" + document_markdown, "fill_attorney_power"
 
                 answer_prompt = ASK_FOR_DATA.format(
                     filled_fields=self.document.get_filled_fields(),
-                    missing_fields=self.document.get_missing_fields()
+                    missing_fields=self.document.get_missing_fields(),
+                    conversation_history=conversation_history
                 )
                 
                 result = await llm_invoke_structured_output(answer_prompt, user_input, AgentAnswer)
-                return result.answer
+                return result.answer, "fill_attorney_power"
 
  
             
