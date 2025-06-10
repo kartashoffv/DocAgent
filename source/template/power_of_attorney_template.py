@@ -40,7 +40,7 @@ class PowerOfAttorneyTemplate:
 """
     
     @staticmethod
-    def generate_pdf(document: PowerOfAttorneyData) -> bytes:
-        # Для будущей реализации функции для генерации PDF
+    def generate_pdf(document: PowerOfAttorneyData):
+        # для генерации PDF
         pass
 
