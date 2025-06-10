@@ -3,8 +3,6 @@ from typing import Optional, Dict, Any, List
 
 class PowerOfAttorneyData(BaseModel):
     """поля сгенерировал gpt на основе картинки """
-    city: Optional[str] = None
-    date: Optional[str] = None
     
     principal_full_name: Optional[str] = None
     principal_address: Optional[str] = None
@@ -24,6 +22,9 @@ class PowerOfAttorneyData(BaseModel):
     car_chassis_number: Optional[str] = None
     car_body_number: Optional[str] = None
     car_vin: Optional[str] = None
+    
+    city: Optional[str] = None
+    date: Optional[str] = None
     
     registration_certificate_issued_by: Optional[str] = None
     registration_certificate_issuer: Optional[str] = None
