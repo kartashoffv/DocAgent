@@ -1,10 +1,10 @@
 import streamlit as st
 import uuid
 import asyncio
-from source.utils.crud import load_chats_from_api, load_chat_messages, delete_chat_from_api, save_message_to_api
+from source.utils.crud import load_chats_from_api, load_chat_messages, delete_chat_from_api, save_message_to_api, get_n_mesage
 from source.agent.agent import ContextAwareAgent
 import time
-GREETING_MESSAGE = "Привет! Я AI-агент, который поможет с заполнением документов. Сейчас умею заполнять только доверенность на управление автомобилем. Начнем?"
+GREETING_MESSAGE = "AI-агент, который поможет с заполнением документов. Сейчас умеет заполнять только доверенность на управление автомобилем и просто общаться. \n\n /get_status - для получения статуса заполнения доверенности"
 
 
 def initialize_chats():
@@ -26,11 +26,11 @@ def initialize_chats():
                     
                     chat_messages = []
                     agent = ContextAwareAgent()
+                    idx=1
                     for msg in messages:
                         chat_messages.append({"role": "user", "content": msg["message_from_human"]})
                         chat_messages.append({"role": "assistant", "content": msg["message_from_ai_agent"]})
-                        agent.conversation_history.append("Предыдущий запрос пользователя: " + msg["message_from_human"])
-                        agent.conversation_history.append("Ответ агента: " + msg["message_from_ai_agent"])
+                        idx+=1
 
                     st.session_state["chats"][chat_uuid] = chat_messages
                     st.session_state["chat_uuids"][chat_uuid] = chat_uuid
@@ -67,10 +67,6 @@ with st.sidebar:
         st.rerun()
     
     st.subheader("Ваши чаты")
-    
-    # if st.session_state.agents.get(st.session_state.current_chat):
-    #     current_agent = st.session_state.agents[st.session_state.current_chat]
-    #     completion = current_agent.document.get_completion_percentage()
     
     if st.session_state.chats:
         for chat_uuid in st.session_state.chats.keys():
@@ -139,15 +135,83 @@ if st.session_state.current_chat in st.session_state.chats:
 
         current_agent = st.session_state.agents.get(st.session_state.current_chat)
         
+        if prompt.strip() == "/get_status":
+            if current_agent and hasattr(current_agent, 'document'):
+                document = current_agent.document
+                completion_percentage = document.get_completion_percentage()
+                filled_fields = document.get_filled_fields()
+                missing_fields = document.get_missing_fields()
+                
+                field_names = {
+                    'city': 'Город',
+                    'date': 'Дата',
+                    'principal_full_name': 'ФИО доверителя',
+                    'principal_address': 'Адрес доверителя',
+                    'principal_passport_series': 'Серия паспорта доверителя',
+                    'principal_passport_number': 'Номер паспорта доверителя',
+                    'principal_passport_issued_by': 'Кем выдан паспорт доверителя',
+                    'agent_full_name': 'ФИО поверенного',
+                    'agent_address': 'Адрес поверенного',
+                    'agent_passport_series': 'Серия паспорта поверенного',
+                    'agent_passport_number': 'Номер паспорта поверенного',
+                    'agent_passport_issued_by': 'Кем выдан паспорт поверенного',
+                    'car_registration_number': 'Регистрационный номер автомобиля',
+                    'car_year': 'Год выпуска автомобиля',
+                    'car_engine_number': 'Номер двигателя',
+                    'car_chassis_number': 'Номер шасси',
+                    'car_body_number': 'Номер кузова',
+                    'car_vin': 'VIN номер',
+                    'registration_certificate_issued_by': 'Кем выдано свидетельство о регистрации',
+                    'registration_certificate_issuer': 'Орган выдачи свидетельства',
+                    'pts_series': 'Серия ПТС',
+                    'pts_number': 'Номер ПТС',
+                    'validity_period': 'Срок действия доверенности'
+                }
+                
+                status_message = f"📊 **Статус заполнения доверенности**\n\n"
+                status_message += f"**Прогресс:** {completion_percentage:.1f}% ({len(filled_fields)}/{len(field_names)} полей)\n\n"
+                
+                if filled_fields:
+                    status_message += "✅ **Заполненные поля:**\n"
+                    for field, value in filled_fields.items():
+                        readable_name = field_names.get(field, field)
+                        status_message += f"• {readable_name}: {value}\n"
+                    status_message += "\n"
+                
+                if missing_fields:
+                    status_message += "❌ **Незаполненные поля:**\n"
+                    for field in missing_fields:
+                        readable_name = field_names.get(field, field)
+                        status_message += f"• {readable_name}\n"
+                else:
+                    status_message += "🎉 **Все поля заполнены! Доверенность готова.**\n"
+                
+                st.session_state.chats[st.session_state.current_chat].append({"role": "assistant", "content": status_message})
+                st.chat_message("assistant").write(status_message)
+            else:
+                error_message = "Не удалось получить информацию о документе."
+                st.session_state.chats[st.session_state.current_chat].append({"role": "assistant", "content": error_message})
+                st.chat_message("assistant").write(error_message)
+            
+            st.rerun()
+        
         with st.spinner("Обрабатываю ваш запрос..."):
             try:
-                ai_response = asyncio.run(current_agent.analyze_user_intent(prompt, current_agent.conversation_history))
-                print("AI_RESPONSE", ai_response)
+                recent_messages = get_n_mesage(st.session_state.current_chat)
+                conversation_history = []
+                idx=1
+                if recent_messages:
+                    for msg in recent_messages:
+                        conversation_history.append(f"Запрос пользователя №{idx} (категория {msg['message_intent']}): " + msg["message_from_human"] + "\n")
+                        conversation_history.append(f"Ответ агента на запрос №{idx} (категория {msg['message_intent']}): " + msg["message_from_ai_agent"] + "\n")
+                        idx+=1
+                
+                ai_response, intent = asyncio.run(current_agent.analyze_user_intent(prompt, conversation_history))
                 st.session_state.chats[st.session_state.current_chat].append({"role": "assistant", "content": ai_response})
                 st.chat_message("assistant").write(ai_response)
 
                 chat_uuid = st.session_state.current_chat
-                save_result = save_message_to_api(chat_uuid, prompt, ai_response)
+                save_result = save_message_to_api(chat_uuid, prompt, ai_response, intent)
                
                 if current_agent.document.get_completion_percentage() == 100:
                     st.success("🎉 Доверенность готова! Вы можете скопировать текст и подписать документ.")
